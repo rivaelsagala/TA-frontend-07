@@ -1,0 +1,481 @@
+'use client';
+
+import { AccountSettingsModal } from '@/components/chat/account-settings-modal';
+import { ChatWindow } from '@/components/chat/chat-window';
+import { ConversationSidebar } from '@/components/chat/conversation-sidebar';
+import { TopBar } from '@/components/chat/top-bar';
+import { useBackendChat } from '@/hooks/useBackendChat';
+import { Conversation, createMessage } from '@/lib/conversation';
+import { ChatSessionData, ChatHistoryData } from '@/types/chat';
+import { useEffect, useState } from 'react';
+
+// const FLASK_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL;
+const CURRENT_USER_ID = 1; 
+
+export default function Home() {
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(256); 
+  
+  // State untuk melacak sesi mana yang sedang loading history-nya
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+
+  const { sendMessage, isLoading, error, clearError } = useBackendChat();
+
+  // 1. Load Sessions (Sidebar) on Mount
+  useEffect(() => {
+    loadSessions();
+  }, []);
+
+  const loadSessions = async (autoSelectId?: string) => {
+    try {
+      // const res = await fetch(`${FLASK_BASE_URL}/api/chat-sessions?user_id=${CURRENT_USER_ID}`);
+      const res = await fetch(`/api/chat-sessions?user_id=${CURRENT_USER_ID}`);
+      const json = await res.json();
+      if (json.status === 'success') {
+        const mappedConvs: Conversation[] = json.data.map((s: ChatSessionData) => ({
+          id: s.id.toString(),
+          title: s.session_name || 'New Chat',
+          createdAt: new Date(s.created_at),
+          updatedAt: new Date(s.updated_at),
+          messages: [], // Message akan di-load saat sesi diklik
+          model: 'llama-3'
+        }));
+        
+        setConversations(mappedConvs);
+
+        // Auto select chat pertama jika belum ada yang terpilih
+        if (!currentConversationId && mappedConvs.length > 0 && !autoSelectId) {
+          setCurrentConversationId(mappedConvs[0].id);
+        } else if (autoSelectId) {
+          setCurrentConversationId(autoSelectId);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to fetch sessions:', e);
+    }
+  };
+
+  // 2. Load History saat Sesi dipilih
+  useEffect(() => {
+    if (currentConversationId) {
+      loadHistory(currentConversationId);
+    }
+  }, [currentConversationId]);
+
+  const loadHistory = async (sessionId: string) => {
+    setIsLoadingHistory(true);
+    try {
+      // const res = await fetch(`${FLASK_BASE_URL}/api/chat-history/${sessionId}`);
+      const res = await fetch(`/api/chat-history/${sessionId}`);
+      const json = await res.json();
+      
+      if (json.status === 'success') {
+        const historyMessages: any[] = [];
+        
+        // Memetakan 1 baris DB menjadi 2 Message (User & Assistant)
+        json.data.forEach((msg: ChatHistoryData) => {
+          historyMessages.push(createMessage('user', msg.user_query));
+          const aiMessage = createMessage('assistant', msg.llm_response);
+          // Tambahkan RAG metadata jika ada
+          if (msg.metadata?.sources) {
+            (aiMessage as any).sources = msg.metadata.sources;
+          }
+          historyMessages.push(aiMessage);
+        });
+
+        // Masukkan history ke percakapan yang aktif
+        setConversations((prev) => 
+          prev.map((c) => c.id === sessionId ? { ...c, messages: historyMessages } : c)
+        );
+      }
+    } catch (e) {
+      console.error('Failed to load history:', e);
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
+
+  const handleNewChat = async () => {
+    // Panggil API untuk membuat sesi baru di Database
+    try {
+      // const res = await fetch(`${FLASK_BASE_URL}/api/chat-sessions`, {
+      //   method: 'POST',
+      //   headers: { 'Content-Type': 'application/json' },
+      //   body: JSON.stringify({
+      //     user_id: CURRENT_USER_ID,
+      //     session_name: 'New Chat'
+      //   })
+      const res = await fetch(`/api/chat-sessions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: CURRENT_USER_ID,
+          session_name: 'New Chat'
+        })
+      });
+      const json = await res.json();
+      if (json.status === 'success') {
+        // Refresh sidebar dan pilih chat yang baru dibuat
+        await loadSessions(json.data.id.toString());
+      }
+    } catch (e) {
+      console.error('Failed to create session:', e);
+    }
+  };
+
+  const handleSelectConversation = (id: string) => {
+    if (currentConversationId !== id) {
+      setCurrentConversationId(id);
+    }
+  };
+
+  const handleDeleteConversation = async (id: string) => {
+    try {
+      const response = await fetch(`/api/chat-sessions/${id}`, { method: 'DELETE' });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to delete session: ${response.statusText}`);
+      }
+
+      const remaining = conversations.filter((c) => c.id !== id);
+      setConversations(remaining);
+      if (currentConversationId === id) {
+        setCurrentConversationId(remaining.length > 0 ? remaining[0].id : null);
+      }
+    } catch (e) {
+      console.error('Failed to delete session:', e);
+    }
+  };
+
+  const handleSendMessage = async (messageText: string) => {
+    let activeId = currentConversationId;
+
+    // Jika belum ada chat yang aktif, paksa buat sesi baru dulu
+    if (!activeId) {
+      // const res = await fetch(`${FLASK_BASE_URL}/api/chat-sessions`, {
+      //   method: 'POST',
+      //   headers: { 'Content-Type': 'application/json' },
+      //   body: JSON.stringify({ user_id: CURRENT_USER_ID, session_name: messageText.substring(0, 30) })
+      // });
+      const res = await fetch(`/api/chat-sessions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: CURRENT_USER_ID, session_name: messageText.substring(0, 30) })
+      });
+      const json = await res.json();
+      if (json.status === 'success') {
+        activeId = json.data.id.toString();
+        await loadSessions(activeId ?? undefined); // Reload sidebar
+      } else {
+        return; // Berhenti jika gagal buat sesi
+      }
+    }
+
+    // 1. Optimistic Update (Tampilkan pesan user di layar)
+    const userMessage = createMessage('user', messageText);
+    setConversations((prev) => prev.map((c) =>
+      c.id === activeId ? { ...c, messages: [...c.messages, userMessage] } : c
+    ));
+
+    // 2. Kirim pesan ke Backend AI
+    const response = await sendMessage(messageText, Number(activeId), CURRENT_USER_ID);
+    
+    // 3. Tampilkan balasan AI
+    if (response && response.status === 'success') {
+      const assistantMessage = createMessage('assistant', response.answer);
+      (assistantMessage as any).sources = response.sources; // RAG Metadata
+      
+      setConversations((prev) => prev.map((c) =>
+        c.id === activeId ? { ...c, messages: [...c.messages, assistantMessage] } : c
+      ));
+    } else if (error) {
+      const errorMessage = createMessage('assistant', `Error: ${error}`);
+      setConversations((prev) => prev.map((c) =>
+        c.id === activeId ? { ...c, messages: [...c.messages, errorMessage] } : c
+      ));
+    }
+  };
+
+  const currentConversation = conversations.find((c) => c.id === currentConversationId);
+
+  return (
+    <div className="flex h-screen bg-white dark:bg-gray-950">
+      {/* Sidebar */}
+      {isSidebarOpen && (
+        <div className="hidden md:flex flex-col border-r border-gray-200 dark:border-gray-800">
+          <ConversationSidebar
+            conversations={conversations}
+            currentConversationId={currentConversationId}
+            onNewChat={handleNewChat}
+            onSelectConversation={handleSelectConversation}
+            onDeleteConversation={handleDeleteConversation}
+            width={sidebarWidth}
+            onWidthChange={setSidebarWidth}
+          />
+        </div>
+      )}
+
+      {/* Main Chat Area */}
+      <div className="flex-1 flex flex-col">
+        <TopBar
+          selectedModel={currentConversation?.model || 'llama-3'}
+          onModelChange={() => {}}
+          onMenuClick={() => setIsSidebarOpen(!isSidebarOpen)}
+          onSettingsClick={() => setIsSettingsOpen(true)}
+        />
+
+        {/* Loading Spinner Untuk Transisi Antar Sesi */}
+        {isLoadingHistory ? (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="w-8 h-8 border-4 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+          </div>
+        ) : currentConversation ? (
+          <ChatWindow
+            messages={currentConversation.messages}
+            isLoading={isLoading}
+            onSendMessage={handleSendMessage}
+            isEmpty={currentConversation.messages.length === 0}
+            error={error}
+          />
+        ) : (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center">
+              <p className="text-gray-500 dark:text-gray-400 mb-4">No conversation selected</p>
+              <button
+                onClick={handleNewChat}
+                className="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg font-medium"
+              >
+                Start a new chat
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Settings Modal */}
+      <AccountSettingsModal 
+        isOpen={isSettingsOpen} 
+        onClose={() => setIsSettingsOpen(false)}
+      />
+    </div>
+  );
+}
+
+// 'use client';
+
+// import { AccountSettingsModal } from '@/components/chat/account-settings-modal';
+// import { ChatWindow } from '@/components/chat/chat-window';
+// import { ConversationSidebar } from '@/components/chat/conversation-sidebar';
+// import { TopBar } from '@/components/chat/top-bar';
+// import { useBackendChat } from '@/hooks/useBackendChat';
+// import { Conversation, createConversation, createMessage, generateConversationTitle } from '@/lib/conversation';
+// import { useEffect, useState } from 'react';
+
+// export default function Home() {
+//   const [conversations, setConversations] = useState<Conversation[]>([]);
+//   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
+//   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+//   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+//   const [sidebarWidth, setSidebarWidth] = useState(256); // 256px = w-64
+//   const [sessionId, setSessionId] = useState<string | null>(null);
+
+//   const { sendMessage, isLoading, error, clearError } = useBackendChat();
+
+//   // Load conversations from localStorage on mount
+//   useEffect(() => {
+//     const saved = localStorage.getItem('conversations');
+//     const savedSessionId = localStorage.getItem('sessionId');
+    
+//     if (saved) {
+//       try {
+//         const parsed = JSON.parse(saved);
+//         setConversations(parsed);
+//         if (parsed.length > 0) {
+//           setCurrentConversationId(parsed[0].id);
+//         }
+//       } catch (e) {
+//         console.error('Failed to load conversations:', e);
+//       }
+//     }
+
+//     // Load or generate session ID
+//     if (savedSessionId) {
+//       setSessionId(savedSessionId);
+//     } else {
+//       const newSessionId = `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+//       setSessionId(newSessionId);
+//       localStorage.setItem('sessionId', newSessionId);
+//     }
+//   }, []);
+
+//   // Save conversations to localStorage whenever they change
+//   useEffect(() => {
+//     localStorage.setItem('conversations', JSON.stringify(conversations));
+//   }, [conversations]);
+
+//   // Clear error when conversation changes
+//   useEffect(() => {
+//     if (error) {
+//       clearError();
+//     }
+//   }, [currentConversationId, error, clearError]);
+
+//   const currentConversation = conversations.find((c) => c.id === currentConversationId);
+
+//   const handleNewChat = () => {
+//     const newConv = createConversation('llama-3');
+//     setConversations((prev) => [newConv, ...prev]);
+//     setCurrentConversationId(newConv.id);
+//   };
+
+//   const handleSelectConversation = (id: string) => {
+//     setCurrentConversationId(id);
+//   };
+
+//   const handleDeleteConversation = (id: string) => {
+//     setConversations((prev) => prev.filter((c) => c.id !== id));
+//     if (currentConversationId === id) {
+//       const remaining = conversations.filter((c) => c.id !== id);
+//       setCurrentConversationId(remaining.length > 0 ? remaining[0].id : null);
+//     }
+//   };
+
+//   const handleModelChange = (modelId: string) => {
+//     if (currentConversation) {
+//       setConversations((prev) =>
+//         prev.map((c) =>
+//           c.id === currentConversationId
+//             ? { ...c, model: modelId, updatedAt: new Date() }
+//             : c
+//         )
+//       );
+//     }
+//   };
+
+//   const handleSendMessage = async (messageText: string) => {
+//     if (!currentConversation) return;
+
+//     // Add user message
+//     const userMessage = createMessage('user', messageText);
+//     setConversations((prev) =>
+//       prev.map((c) =>
+//         c.id === currentConversationId
+//           ? {
+//               ...c,
+//               messages: [...c.messages, userMessage],
+//               updatedAt: new Date(),
+//             }
+//           : c
+//       )
+//     );
+
+//     // Update title if it's the first message
+//     if (currentConversation.messages.length === 0) {
+//       setConversations((prev) =>
+//         prev.map((c) =>
+//           c.id === currentConversationId
+//             ? { ...c, title: generateConversationTitle(messageText) }
+//             : c
+//         )
+//       );
+//     }
+
+//     // Send message to backend
+//     const response = await sendMessage(messageText);
+    
+//     if (response && response.status === 'success') {
+//       // Add assistant response with sources
+//       const assistantMessage = createMessage('assistant', response.answer);
+//       // Store sources in the message metadata if needed
+//       (assistantMessage as any).sources = response.sources;
+      
+//       setConversations((prev) =>
+//         prev.map((c) =>
+//           c.id === currentConversationId
+//             ? {
+//                 ...c,
+//                 messages: [...c.messages, assistantMessage],
+//                 updatedAt: new Date(),
+//               }
+//             : c
+//         )
+//       );
+//     } else if (error) {
+//       // Add error message
+//       const errorMessage = createMessage('assistant', `Sorry, I encountered an error: ${error}`);
+//       setConversations((prev) =>
+//         prev.map((c) =>
+//           c.id === currentConversationId
+//             ? {
+//                 ...c,
+//                 messages: [...c.messages, errorMessage],
+//                 updatedAt: new Date(),
+//               }
+//             : c
+//         )
+//       );
+//     }
+//   };
+
+//   return (
+//     <div className="flex h-screen bg-white dark:bg-gray-950">
+//       {/* Sidebar */}
+//       {isSidebarOpen && (
+//         <div className="hidden md:flex flex-col border-r border-gray-200 dark:border-gray-800">
+//           <ConversationSidebar
+//             conversations={conversations}
+//             currentConversationId={currentConversationId}
+//             onNewChat={handleNewChat}
+//             onSelectConversation={handleSelectConversation}
+//             onDeleteConversation={handleDeleteConversation}
+//             width={sidebarWidth}
+//             onWidthChange={setSidebarWidth}
+//           />
+//         </div>
+//       )}
+
+//       {/* Main Chat Area */}
+//       <div className="flex-1 flex flex-col">
+//         {/* Top Bar */}
+//         <TopBar
+//           selectedModel={currentConversation?.model || 'llama-3'}
+//           onModelChange={handleModelChange}
+//           onMenuClick={() => setIsSidebarOpen(!isSidebarOpen)}
+//           onSettingsClick={() => setIsSettingsOpen(true)}
+//         />
+
+//         {/* Chat Window */}
+//         {currentConversation ? (
+//           <ChatWindow
+//             messages={currentConversation.messages}
+//             isLoading={isLoading}
+//             onSendMessage={handleSendMessage}
+//             isEmpty={currentConversation.messages.length === 0}
+//             error={error}
+//           />
+//         ) : (
+//           <div className="flex-1 flex items-center justify-center">
+//             <div className="text-center">
+//               <p className="text-gray-500 dark:text-gray-400 mb-4">No conversation selected</p>
+//               <button
+//                 onClick={handleNewChat}
+//                 className="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg font-medium"
+//               >
+//                 Start a new chat
+//               </button>
+//             </div>
+//           </div>
+//         )}
+//       </div>
+
+//       {/* Settings Modal */}
+//       <AccountSettingsModal 
+//         isOpen={isSettingsOpen} 
+//         onClose={() => setIsSettingsOpen(false)}
+//       />
+//     </div>
+//   );
+// }
