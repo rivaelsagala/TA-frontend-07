@@ -1,7 +1,7 @@
 'use client';
 
 import { cn } from '@/lib/utils';
-import { memo, useEffect, useState, useMemo } from 'react';
+import { memo, useEffect, useState } from 'react';
 
 interface MarkdownMessageProps {
   content: string;

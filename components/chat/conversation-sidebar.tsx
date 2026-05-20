@@ -2,7 +2,7 @@
 
 import { Button } from '@/components/ui/button';
 import { Conversation } from '@/lib/conversation';
-import { MessageCircle, Plus, Trash2, GripVertical } from 'lucide-react';
+import { MessageCircle, Plus, Trash2 } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 
 interface ConversationSidebarProps {

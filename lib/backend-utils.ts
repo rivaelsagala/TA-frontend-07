@@ -41,8 +41,9 @@ export const checkBackendHealth = async (): Promise<BackendHealthResponse> => {
         timestamp: new Date().toISOString(),
       };
     }
-  } catch (error: any) {
-    if (error.name === 'AbortError') {
+  } catch (error: unknown) {
+    const err = error as { name?: string; message?: string };
+    if (err.name === 'AbortError') {
       return {
         status: 'error',
         message: 'Backend service timeout',
