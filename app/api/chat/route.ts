@@ -14,9 +14,8 @@ export async function POST(request: Request) {
       );
     }
 
-    // Backend Flask URL (Gunakan variabel env tanpa diekspos ke client)
-    // Pastikan di .env kamu ada: BACKEND_URL=http://127.0.0.1:5000
-    const backendUrl = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://127.0.0.1:5000';
+    // Backend Flask URL (Gunakan variabel env)
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
     
     // Meneruskan payload lengkap ke Flask
     const chatRequest = {

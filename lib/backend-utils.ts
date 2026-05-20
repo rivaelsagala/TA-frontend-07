@@ -13,7 +13,7 @@ export interface BackendHealthResponse {
  */
 export const checkBackendHealth = async (): Promise<BackendHealthResponse> => {
   try {
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
     
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000); // 5 second timeout
