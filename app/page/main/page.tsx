@@ -5,7 +5,7 @@ import { ChatWindow } from '@/components/chat/chat-window';
 import { ConversationSidebar } from '@/components/chat/conversation-sidebar';
 import { TopBar } from '@/components/chat/top-bar';
 import { useBackendChat } from '@/hooks/useBackendChat';
-import { Conversation, createMessage } from '@/lib/conversation';
+import { Conversation, Message, createMessage } from '@/lib/conversation';
 import { ChatSessionData, ChatHistoryData } from '@/types/chat';
 import { useEffect, useState } from 'react';
 
@@ -23,14 +23,15 @@ export default function Home() {
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   
   // Cache untuk histori yang sudah di-load (untuk performa)
-  const [historyCache, setHistoryCache] = useState<Record<string, any[]>>({});
+  const [historyCache, setHistoryCache] = useState<Record<string, Message[]>>({});
 
-  const { sendMessage, isLoading, error, clearError } = useBackendChat();
+  const { sendMessage, isLoading, error } = useBackendChat();
 
   // 1. Load Sessions (Sidebar) on Mount + Restore selected session dari localStorage
   useEffect(() => {
     const savedSessionId = localStorage.getItem('currentConversationId');
     loadSessions(savedSessionId || undefined);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // 2. Persist currentConversationId ke localStorage setiap kali berubah
@@ -84,6 +85,7 @@ export default function Home() {
         loadHistory(currentConversationId);
       }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentConversationId]);
 
   const loadHistory = async (sessionId: string) => {
@@ -100,7 +102,7 @@ export default function Home() {
           
           // Tambahkan RAG metadata jika ada
           if (msg.metadata?.sources) {
-            (aiMessage as any).sources = msg.metadata.sources;
+            aiMessage.sources = msg.metadata.sources;
           }
           
           return [userMsg, aiMessage];
@@ -215,7 +217,7 @@ export default function Home() {
     // 3. Tampilkan balasan AI
     if (response && response.status === 'success') {
       const assistantMessage = createMessage('assistant', response.answer);
-      (assistantMessage as any).sources = response.sources; // RAG Metadata
+      assistantMessage.sources = response.sources; // RAG Metadata
       
       setConversations((prev) => prev.map((c) =>
         c.id === activeId ? { ...c, messages: [...c.messages, assistantMessage] } : c

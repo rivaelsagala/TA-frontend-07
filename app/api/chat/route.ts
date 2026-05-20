@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import type { BackendChatResponse, ChatRequest } from '@/types/chat';
+import type { BackendChatResponse } from '@/types/chat';
 
 export async function POST(request: Request) {
   try {
@@ -72,17 +72,18 @@ export async function POST(request: Request) {
         sources: data.sources || []
       });
 
-    } catch (fetchError: any) {
+    } catch (fetchError: unknown) {
       clearTimeout(timeout);
       
-      if (fetchError.name === 'AbortError') {
+      if (fetchError instanceof Error && fetchError.name === 'AbortError') {
         return NextResponse.json({ error: 'Request timed out.', status: 'error' }, { status: 408 });
       }
       return NextResponse.json({ error: 'Failed to connect to backend service.', status: 'error' }, { status: 503 });
     }
     
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message || 'Failed to process chat query', status: 'error' }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Failed to process chat query';
+    return NextResponse.json({ error: message, status: 'error' }, { status: 500 });
   }
 }
 

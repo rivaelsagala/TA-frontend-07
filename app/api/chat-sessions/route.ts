@@ -36,9 +36,10 @@ export async function GET(request: Request) {
 
     const data = await backendResponse.json();
     return NextResponse.json(data);
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Failed to fetch chat sessions';
     return NextResponse.json(
-      { error: error.message || 'Failed to fetch chat sessions', status: 'error' },
+      { error: message, status: 'error' },
       { status: 500 }
     );
   }
@@ -82,9 +83,10 @@ export async function POST(request: Request) {
 
     const data = await backendResponse.json();
     return NextResponse.json(data);
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Failed to create chat session';
     return NextResponse.json(
-      { error: error.message || 'Failed to create chat session', status: 'error' },
+      { error: message, status: 'error' },
       { status: 500 }
     );
   }

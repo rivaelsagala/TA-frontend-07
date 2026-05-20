@@ -37,9 +37,10 @@ export async function DELETE(
 
     const data = await backendResponse.json();
     return NextResponse.json(data);
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Failed to delete chat session';
     return NextResponse.json(
-      { error: error.message || 'Failed to delete chat session', status: 'error' },
+      { error: message, status: 'error' },
       { status: 500 }
     );
   }
@@ -84,9 +85,10 @@ export async function PUT(
 
     const data = await backendResponse.json();
     return NextResponse.json(data);
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Failed to update chat session';
     return NextResponse.json(
-      { error: error.message || 'Failed to update chat session', status: 'error' },
+      { error: message, status: 'error' },
       { status: 500 }
     );
   }

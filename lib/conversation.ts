@@ -4,6 +4,7 @@ export interface Message {
   content: string;
   timestamp: Date;
   isStreaming?: boolean;
+  sources?: unknown;
 }
 
 export interface Conversation {

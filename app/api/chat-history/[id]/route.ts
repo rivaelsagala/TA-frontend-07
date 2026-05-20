@@ -38,9 +38,10 @@ export async function GET(
 
     const data = await backendResponse.json();
     return NextResponse.json(data);
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Failed to fetch chat history';
     return NextResponse.json(
-      { error: error.message || 'Failed to fetch chat history', status: 'error' },
+      { error: message, status: 'error' },
       { status: 500 }
     );
   }

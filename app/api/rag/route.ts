@@ -36,12 +36,14 @@ export async function POST(request: Request) {
 
     return NextResponse.json(await backendResponse.json());
     
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Failed to process RAG query';
+    const stack = error instanceof Error ? error.stack : undefined;
     console.error('RAG proxy error:', error);
     return NextResponse.json(
       { 
-        error: error.message || 'Failed to process RAG query',
-        details: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+        error: message,
+        details: process.env.NODE_ENV === 'development' ? stack : undefined,
         status: "error"
       },
       { status: 500 }
