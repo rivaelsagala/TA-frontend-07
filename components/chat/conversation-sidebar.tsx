@@ -68,10 +68,16 @@ export function ConversationSidebar({
     }
   }, [isResizing, onWidthChange]);
 
+  // Update width via ref instead of inline style
+  useEffect(() => {
+    if (sidebarRef.current) {
+      sidebarRef.current.style.width = `${width}px`;
+    }
+  }, [width]);
+
   return (
     <div 
       ref={sidebarRef}
-      style={{ width: `${width}px` }}
       className="flex flex-col h-full bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 relative"
     >
       {/* Resize handle */}
@@ -126,6 +132,8 @@ export function ConversationSidebar({
                       onDeleteConversation(conv.id);
                     }}
                     className="absolute right-2 top-2 p-1 rounded hover:bg-red-500/20 text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                    aria-label="Delete conversation"
+                    title="Delete conversation"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>

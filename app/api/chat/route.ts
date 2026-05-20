@@ -4,7 +4,7 @@ import type { BackendChatResponse, ChatRequest } from '@/types/chat';
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { message, question, session_id, user_id } = body;
+    const { message, question, session_id, user_id, use_finetuned_model } = body;
     const chatMessage = message || question; 
     
     if (!chatMessage || typeof chatMessage !== 'string') {
@@ -20,15 +20,16 @@ export async function POST(request: Request) {
     
     // Meneruskan payload lengkap ke Flask
     const chatRequest = {
-      message: chatMessage.trim(),
       session_id,
-      user_id
+      user_id,
+      message: chatMessage.trim(),
+      use_finetuned_model: use_finetuned_model ?? false,
     };
 
     console.log('Proxying request to Flask Backend:', `${backendUrl}/api/chat`);
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000); 
+    const timeout = setTimeout(() => controller.abort(), 120000); // Timeout 120 detik (2 menit)
 
     try {
       // PERUBAHAN: Pastikan path menuju endpoint Flask-mu benar (di page.tsx kamu menembak /api/chat)

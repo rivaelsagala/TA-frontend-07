@@ -32,6 +32,8 @@ export function AccountSettingsModal({ isOpen, onClose }: AccountSettingsModalPr
             <button
               onClick={onClose}
               className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+              aria-label="Close settings modal"
+              title="Close"
             >
               <X className="w-5 h-5 text-gray-500 dark:text-gray-400" />
             </button>
@@ -61,7 +63,7 @@ export function AccountSettingsModal({ isOpen, onClose }: AccountSettingsModalPr
               </Button>
             </div>
           </div>
-
+      
           {/* General Settings */}
           <div className="mb-6">
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
@@ -71,33 +73,39 @@ export function AccountSettingsModal({ isOpen, onClose }: AccountSettingsModalPr
             <div className="space-y-3">
               {/* Dark Mode */}
               <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                <span className="text-sm text-gray-700 dark:text-gray-300">Dark Mode</span>
-                <label className="relative flex items-center cursor-pointer">
+                <label htmlFor="dark-mode-toggle" className="text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                  Dark Mode
+                </label>
+                <div className="relative flex items-center">
                   <input
+                    id="dark-mode-toggle"
                     type="checkbox"
                     checked={darkMode}
                     onChange={(e) => setDarkMode(e.target.checked)}
                     className="sr-only peer"
+                    aria-label="Toggle dark mode"
                   />
                   <div className="w-9 h-5 bg-gray-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-500"></div>
-                </label>
+                </div>
               </div>
 
               {/* Notifications */}
               <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                <span className="text-sm text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                <label htmlFor="notifications-toggle" className="text-sm text-gray-700 dark:text-gray-300 flex items-center gap-2 cursor-pointer">
                   <Bell className="w-4 h-4" />
                   Notifications
-                </span>
-                <label className="relative flex items-center cursor-pointer">
+                </label>
+                <div className="relative flex items-center">
                   <input
+                    id="notifications-toggle"
                     type="checkbox"
                     checked={notifications}
                     onChange={(e) => setNotifications(e.target.checked)}
                     className="sr-only peer"
+                    aria-label="Toggle notifications"
                   />
                   <div className="w-9 h-5 bg-gray-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-500"></div>
-                </label>
+                </div>
               </div>
             </div>
           </div>

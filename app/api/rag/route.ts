@@ -12,7 +12,7 @@ export async function POST(request: Request) {
     }
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000); // Timeout 10 detik
+    const timeout = setTimeout(() => controller.abort(), 120000); // Timeout 120 detik (2 menit)
 
     const backendResponse = await fetch(
       `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/rag-query`,

@@ -23,6 +23,7 @@ export async function GET(request: Request) {
       headers: {
         'Accept': 'application/json',
       },
+      cache: 'no-store',
     });
 
     if (!backendResponse.ok) {

@@ -4,7 +4,7 @@ import { ChatInput } from '@/components/chat/chat-input';
 import { MarkdownMessage } from '@/components/chat/markdown-message';
 import { Message } from '@/lib/conversation';
 import { MessageCircle } from 'lucide-react';
-import { useEffect, useRef } from 'react';
+import { memo, useEffect, useRef } from 'react';
 
 interface ChatWindowProps {
   messages: Message[];
@@ -12,15 +12,28 @@ interface ChatWindowProps {
   onSendMessage: (message: string) => void;
   isEmpty?: boolean;
   error?: string | null;
+  isHistoryLoading?: boolean; // Flag untuk menandai loading histori
 }
 
-export function ChatWindow({ messages, isLoading, onSendMessage, isEmpty, error }: ChatWindowProps) {
+// OPTIMASI: Gunakan React.memo untuk menghindari re-render berlebihan
+export const ChatWindow = memo(function ChatWindow({ 
+  messages, 
+  isLoading, 
+  onSendMessage, 
+  isEmpty, 
+  error,
+  isHistoryLoading = false 
+}: ChatWindowProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const prevMessagesLengthRef = useRef(messages.length);
 
   useEffect(() => {
-    // Auto-scroll to bottom
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    // Auto-scroll to bottom hanya untuk pesan baru, tidak untuk histori
+    if (messages.length > prevMessagesLengthRef.current || isLoading) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+    prevMessagesLengthRef.current = messages.length;
+  }, [messages, isLoading]);
 
   return (
     <div className="flex flex-col h-full bg-white dark:bg-gray-950">
@@ -29,18 +42,19 @@ export function ChatWindow({ messages, isLoading, onSendMessage, isEmpty, error 
         {isEmpty ? (
           <div className="h-full flex flex-col items-center justify-center text-center">
             <MessageCircle className="w-12 h-12 text-purple-300 dark:text-purple-800 mb-4" />
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Start a conversation</h2>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Mulai Sebuah Percakapan</h2>
             <p className="text-gray-600 dark:text-gray-400 max-w-sm">
-              Ask me anything. I'm here to help with questions, creative writing, coding, and more.
+              Tanyakan saya apa aja. Saya disini membantu menjawab pertanyaan mengenai peraturan Desa.
             </p>
           </div>
         ) : (
           <>
-            {messages.map((message) => (
+            {messages.map((message, index) => (
               <MarkdownMessage
                 key={message.id}
                 content={message.content}
                 isUser={message.role === 'user'}
+                skipTyping={isHistoryLoading || index < messages.length - 1}
               />
             ))}
             {error && (
@@ -60,8 +74,8 @@ export function ChatWindow({ messages, isLoading, onSendMessage, isEmpty, error 
                 <div className="rounded-2xl rounded-tl-sm px-4 py-3 bg-gray-100 dark:bg-gray-800">
                   <div className="flex gap-2">
                     <div className="w-2 h-2 bg-gray-600 dark:bg-gray-400 rounded-full animate-bounce" />
-                    <div className="w-2 h-2 bg-gray-600 dark:bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }} />
-                    <div className="w-2 h-2 bg-gray-600 dark:bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
+                    <div className="w-2 h-2 bg-gray-600 dark:bg-gray-400 rounded-full animate-bounce" />
+                    <div className="w-2 h-2 bg-gray-600 dark:bg-gray-400 rounded-full animate-bounce" />
                   </div>
                 </div>
               </div>
@@ -75,4 +89,7 @@ export function ChatWindow({ messages, isLoading, onSendMessage, isEmpty, error 
       <ChatInput onSend={onSendMessage} isLoading={isLoading} />
     </div>
   );
-}
+});
+
+// Tambahkan displayName untuk debugging yang lebih baik
+ChatWindow.displayName = 'ChatWindow';

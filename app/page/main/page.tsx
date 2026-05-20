@@ -21,17 +21,27 @@ export default function Home() {
   
   // State untuk melacak sesi mana yang sedang loading history-nya
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  
+  // Cache untuk histori yang sudah di-load (untuk performa)
+  const [historyCache, setHistoryCache] = useState<Record<string, any[]>>({});
 
   const { sendMessage, isLoading, error, clearError } = useBackendChat();
 
-  // 1. Load Sessions (Sidebar) on Mount
+  // 1. Load Sessions (Sidebar) on Mount + Restore selected session dari localStorage
   useEffect(() => {
-    loadSessions();
+    const savedSessionId = localStorage.getItem('currentConversationId');
+    loadSessions(savedSessionId || undefined);
   }, []);
+
+  // 2. Persist currentConversationId ke localStorage setiap kali berubah
+  useEffect(() => {
+    if (currentConversationId) {
+      localStorage.setItem('currentConversationId', currentConversationId);
+    }
+  }, [currentConversationId]);
 
   const loadSessions = async (autoSelectId?: string) => {
     try {
-      // const res = await fetch(`${FLASK_BASE_URL}/api/chat-sessions?user_id=${CURRENT_USER_ID}`);
       const res = await fetch(`/api/chat-sessions?user_id=${CURRENT_USER_ID}`);
       const json = await res.json();
       if (json.status === 'success') {
@@ -46,11 +56,11 @@ export default function Home() {
         
         setConversations(mappedConvs);
 
-        // Auto select chat pertama jika belum ada yang terpilih
-        if (!currentConversationId && mappedConvs.length > 0 && !autoSelectId) {
-          setCurrentConversationId(mappedConvs[0].id);
-        } else if (autoSelectId) {
+        // Priority: autoSelectId > savedSessionId > first session
+        if (autoSelectId && mappedConvs.some(c => c.id === autoSelectId)) {
           setCurrentConversationId(autoSelectId);
+        } else if (!currentConversationId && mappedConvs.length > 0) {
+          setCurrentConversationId(mappedConvs[0].id);
         }
       }
     } catch (e) {
@@ -58,38 +68,51 @@ export default function Home() {
     }
   };
 
-  // 2. Load History saat Sesi dipilih
+  // 3. Load History saat Sesi dipilih - dengan caching
   useEffect(() => {
     if (currentConversationId) {
-      loadHistory(currentConversationId);
+      // Cek apakah histori sudah ada di cache
+      if (historyCache[currentConversationId]) {
+        // Langsung pakai dari cache (instant!)
+        setConversations((prev) => 
+          prev.map((c) => c.id === currentConversationId 
+            ? { ...c, messages: historyCache[currentConversationId] } 
+            : c)
+        );
+      } else {
+        // Load dari server jika belum ada di cache
+        loadHistory(currentConversationId);
+      }
     }
   }, [currentConversationId]);
 
   const loadHistory = async (sessionId: string) => {
     setIsLoadingHistory(true);
     try {
-      // const res = await fetch(`${FLASK_BASE_URL}/api/chat-history/${sessionId}`);
       const res = await fetch(`/api/chat-history/${sessionId}`);
       const json = await res.json();
       
       if (json.status === 'success') {
-        const historyMessages: any[] = [];
-        
-        // Memetakan 1 baris DB menjadi 2 Message (User & Assistant)
-        json.data.forEach((msg: ChatHistoryData) => {
-          historyMessages.push(createMessage('user', msg.user_query));
+        // OPTIMASI: Gunakan map + flat untuk performa lebih baik daripada forEach + push
+        const historyMessages = json.data.flatMap((msg: ChatHistoryData) => {
+          const userMsg = createMessage('user', msg.user_query);
           const aiMessage = createMessage('assistant', msg.llm_response);
+          
           // Tambahkan RAG metadata jika ada
           if (msg.metadata?.sources) {
             (aiMessage as any).sources = msg.metadata.sources;
           }
-          historyMessages.push(aiMessage);
+          
+          return [userMsg, aiMessage];
         });
 
-        // Masukkan history ke percakapan yang aktif
+        // Update state sekali saja (batch update)
         setConversations((prev) => 
           prev.map((c) => c.id === sessionId ? { ...c, messages: historyMessages } : c)
         );
+        
+        // Simpan ke cache untuk load cepat berikutnya
+        setHistoryCache((prev) => ({ ...prev, [sessionId]: historyMessages }));
       }
     } catch (e) {
       console.error('Failed to load history:', e);
@@ -155,11 +178,6 @@ export default function Home() {
 
     // Jika belum ada chat yang aktif, paksa buat sesi baru dulu
     if (!activeId) {
-      // const res = await fetch(`${FLASK_BASE_URL}/api/chat-sessions`, {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({ user_id: CURRENT_USER_ID, session_name: messageText.substring(0, 30) })
-      // });
       const res = await fetch(`/api/chat-sessions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -174,11 +192,22 @@ export default function Home() {
       }
     }
 
+    // Cek apakah ini pesan pertama di percakapan ini (untuk update session_name nanti)
+    const currentConv = conversations.find((c) => c.id === activeId);
+    const isFirstMessage = currentConv ? currentConv.messages.length === 0 : true;
+
     // 1. Optimistic Update (Tampilkan pesan user di layar)
     const userMessage = createMessage('user', messageText);
     setConversations((prev) => prev.map((c) =>
       c.id === activeId ? { ...c, messages: [...c.messages, userMessage] } : c
     ));
+    
+    // PERBAIKAN: Invalidate cache untuk session ini karena ada pesan baru
+    setHistoryCache((prev) => {
+      const newCache = { ...prev };
+      delete newCache[activeId!];
+      return newCache;
+    });
 
     // 2. Kirim pesan ke Backend AI
     const response = await sendMessage(messageText, Number(activeId), CURRENT_USER_ID);
@@ -197,7 +226,26 @@ export default function Home() {
         c.id === activeId ? { ...c, messages: [...c.messages, errorMessage] } : c
       ));
     }
+
+    // 4. Update session_name jika ini pesan pertama
+    if (isFirstMessage && activeId) {
+      const sessionName = messageText.substring(0, 30);
+      try {
+        await fetch(`/api/chat-sessions/${activeId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_name: sessionName })
+        });
+        // Update title di sidebar secara lokal
+        setConversations((prev) => prev.map((c) =>
+          c.id === activeId ? { ...c, title: sessionName } : c
+        ));
+      } catch (e) {
+        console.error('Failed to update session name:', e);
+      }
+    }
   };
+
 
   const currentConversation = conversations.find((c) => c.id === currentConversationId);
 
@@ -239,6 +287,7 @@ export default function Home() {
             onSendMessage={handleSendMessage}
             isEmpty={currentConversation.messages.length === 0}
             error={error}
+            isHistoryLoading={isLoadingHistory}
           />
         ) : (
           <div className="flex-1 flex items-center justify-center">

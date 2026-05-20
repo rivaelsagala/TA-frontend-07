@@ -1,20 +1,31 @@
 'use client';
 
 import { cn } from '@/lib/utils';
-import { useEffect, useState } from 'react';
+import { memo, useEffect, useState, useMemo } from 'react';
 
 interface MarkdownMessageProps {
   content: string;
   isUser: boolean;
+  skipTyping?: boolean; // Flag untuk skip typing effect (histori)
 }
 
-export function MarkdownMessage({ content, isUser }: MarkdownMessageProps) {
-  const [displayedText, setDisplayedText] = useState('');
-  const [isTyping, setIsTyping] = useState(!isUser);
+// OPTIMASI: Gunakan React.memo untuk menghindari re-render jika props tidak berubah
+export const MarkdownMessage = memo(function MarkdownMessage({ content, isUser, skipTyping = false }: MarkdownMessageProps) {
+  const [displayedText, setDisplayedText] = useState(skipTyping ? content : '');
+  const [isTyping, setIsTyping] = useState(!isUser && !skipTyping);
 
   useEffect(() => {
-    if (!isUser) {
+    // Skip typing effect untuk histori atau pesan user
+    if (skipTyping || isUser) {
+      setDisplayedText(content);
+      setIsTyping(false);
+      return;
+    }
+
+    // Typing effect untuk pesan AI baru
+    if (!isUser && content.length > 0) {
       setDisplayedText('');
+      setIsTyping(true);
       let index = 0;
       const timer = setInterval(() => {
         if (index < content.length) {
@@ -26,10 +37,8 @@ export function MarkdownMessage({ content, isUser }: MarkdownMessageProps) {
         }
       }, 15);
       return () => clearInterval(timer);
-    } else {
-      setDisplayedText(content);
     }
-  }, [content, isUser]);
+  }, [content, isUser, skipTyping]);
 
   // Simple markdown rendering
   const renderContent = (text: string) => {
@@ -56,11 +65,12 @@ export function MarkdownMessage({ content, isUser }: MarkdownMessageProps) {
             if (line.startsWith('## ')) {
               return <h2 key={lineIdx} className="text-base font-bold mt-2 mb-1">{line.substring(3)}</h2>;
             }
-            if (line.startsWith('- ')) {
-              return <li key={lineIdx} className="ml-4">{line.substring(2)}</li>;
-            }
-            if (line.startsWith('* ')) {
-              return <li key={lineIdx} className="ml-4">{line.substring(2)}</li>;
+            if (line.startsWith('- ') || line.startsWith('* ')) {
+              return (
+                <ul key={lineIdx} className="list-disc ml-4">
+                  <li>{line.substring(2)}</li>
+                </ul>
+              );
             }
             return (
               <p key={lineIdx} className="mb-1">
@@ -90,4 +100,7 @@ export function MarkdownMessage({ content, isUser }: MarkdownMessageProps) {
       </div>
     </div>
   );
-}
+});
+
+// Tambahkan displayName untuk debugging yang lebih baik
+MarkdownMessage.displayName = 'MarkdownMessage';

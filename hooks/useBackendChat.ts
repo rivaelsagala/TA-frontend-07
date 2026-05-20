@@ -30,9 +30,10 @@ export const useBackendChat = (): ChatHookResult => {
       setError(null);
       
       const requestBody: ChatRequest = {
-        message: message.trim(),
         session_id: sessionId,
-        user_id: userId
+        user_id: userId,
+        message: message.trim(),
+        use_finetuned_model: false,
       };
 
       console.log('Sending chat request to Next.js API:', requestBody);

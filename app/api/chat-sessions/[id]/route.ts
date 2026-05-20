@@ -44,3 +44,50 @@ export async function DELETE(
     );
   }
 }
+
+/**
+ * PUT: Update a specific chat session (e.g., session_name)
+ * URL params: id (session_id)
+ * Body: { session_name }
+ */
+export async function PUT(
+  request: Request,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const sessionId = params.id;
+    const body = await request.json();
+
+    if (!sessionId) {
+      return NextResponse.json(
+        { error: 'session_id is required', status: 'error' },
+        { status: 400 }
+      );
+    }
+
+    const backendResponse = await fetch(`${BACKEND_URL}/api/chat-sessions/${sessionId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!backendResponse.ok) {
+      const errorText = await backendResponse.text();
+      return NextResponse.json(
+        { error: `Failed to update session: ${errorText}`, status: 'error' },
+        { status: backendResponse.status }
+      );
+    }
+
+    const data = await backendResponse.json();
+    return NextResponse.json(data);
+  } catch (error: any) {
+    return NextResponse.json(
+      { error: error.message || 'Failed to update chat session', status: 'error' },
+      { status: 500 }
+    );
+  }
+}

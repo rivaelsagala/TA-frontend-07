@@ -85,6 +85,7 @@ export interface ChatRequest {
   message: string;
   session_id: number;
   user_id: number;
+  use_finetuned_model: boolean;
 }
 
 // Tipe Data untuk Respons API Sesi Chat
