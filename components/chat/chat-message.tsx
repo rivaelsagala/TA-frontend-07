@@ -16,7 +16,9 @@ export function ChatMessage({ message, isUser, isLoading }: ChatMessageProps) {
   useEffect(() => {
     if (!isUser && !isTyping) {
       setDisplayedText('');
+
       let index = 0;
+
       const timer = setInterval(() => {
         if (index < message.length) {
           setDisplayedText(message.slice(0, index + 1));
@@ -26,6 +28,7 @@ export function ChatMessage({ message, isUser, isLoading }: ChatMessageProps) {
           clearInterval(timer);
         }
       }, 30);
+
       return () => clearInterval(timer);
     } else {
       setDisplayedText(message);
@@ -35,8 +38,10 @@ export function ChatMessage({ message, isUser, isLoading }: ChatMessageProps) {
   if (isLoading && isUser) {
     return (
       <div className="flex justify-end mb-4">
-        <div className="max-w-xs lg:max-w-md bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-2xl rounded-tr-sm px-4 py-3 shadow-md">
-          <p className="text-sm">{message}</p>
+        <div className="max-w-xs lg:max-w-md bg-none bg-[#007AFF] text-white rounded-2xl rounded-tr-sm px-4 py-3 shadow-sm">
+          <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">
+            {message}
+          </p>
         </div>
       </div>
     );
@@ -46,14 +51,19 @@ export function ChatMessage({ message, isUser, isLoading }: ChatMessageProps) {
     <div className={cn('flex mb-4', isUser ? 'justify-end' : 'justify-start')}>
       <div
         className={cn(
-          'max-w-xs lg:max-w-md rounded-2xl px-4 py-3 shadow-md',
+          'max-w-xs lg:max-w-md rounded-2xl px-4 py-3 shadow-sm',
           isUser
-            ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-tr-sm'
+            ? 'bg-none bg-[#007AFF] text-white rounded-tr-sm'
             : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-tl-sm'
         )}
       >
-        <p className="text-sm leading-relaxed">{displayedText}</p>
-        {isTyping && <span className="inline-block w-2 h-2 bg-current rounded-full ml-1 animate-pulse" />}
+        <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">
+          {displayedText}
+        </p>
+
+        {isTyping && (
+          <span className="inline-block w-2 h-2 bg-current rounded-full ml-1 animate-pulse" />
+        )}
       </div>
     </div>
   );

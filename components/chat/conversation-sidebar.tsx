@@ -2,7 +2,7 @@
 
 import { Button } from '@/components/ui/button';
 import { Conversation } from '@/lib/conversation';
-import { MessageCircle, Plus, Trash2 } from 'lucide-react';
+import { MessageCircle, PanelLeftClose, Plus, Trash2 } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 
 interface ConversationSidebarProps {
@@ -11,6 +11,7 @@ interface ConversationSidebarProps {
   onNewChat: () => void;
   onSelectConversation: (id: string) => void;
   onDeleteConversation: (id: string) => void;
+  onMenuClick?: () => void;
   width?: number;
   onWidthChange?: (width: number) => void;
 }
@@ -21,10 +22,10 @@ export function ConversationSidebar({
   onNewChat,
   onSelectConversation,
   onDeleteConversation,
-  width = 256,
+  onMenuClick,
+  width = 240,
   onWidthChange,
 }: ConversationSidebarProps) {
-  const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
 
@@ -83,18 +84,31 @@ export function ConversationSidebar({
       {/* Resize handle */}
       <div
         onMouseDown={() => setIsResizing(true)}
-        className="absolute right-0 top-0 h-full w-1 hover:bg-purple-500 cursor-col-resize hover:w-1.5 transition-all group"
+        className="absolute right-0 top-0 h-full w-1 hover:bg-[#007AFF] cursor-col-resize hover:w-1.5 transition-all group"
         title="Drag to resize sidebar"
       />
 
-      <div className="p-4 border-b border-gray-200 dark:border-gray-800">
-        <Button
-          onClick={onNewChat}
-          className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white rounded-lg font-medium shadow-md"
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          New Chat
-        </Button>
+      <div className="p-3 border-b border-gray-200 dark:border-gray-800">
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={onNewChat}
+            className="flex-1 bg-[#007AFF] hover:bg-[#006FE6] text-white rounded-lg font-medium shadow-md"
+          >
+            <Plus className="w-3 h-3 mr-1.5" />
+            New Chat
+          </Button>
+
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onMenuClick}
+            className="h-10 w-10 shrink-0 rounded-lg text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+            aria-label="Toggle sidebar"
+            title="Toggle sidebar"
+          >
+            <PanelLeftClose className="w-5 h-5" />
+          </Button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto">
@@ -104,20 +118,18 @@ export function ConversationSidebar({
             <p>No conversations yet</p>
           </div>
         ) : (
-          <div className="p-2">
+          <div className="px-2 py-1">
             {conversations.map((conv) => (
               <div
                 key={conv.id}
-                onMouseEnter={() => setHoveredId(conv.id)}
-                onMouseLeave={() => setHoveredId(null)}
-                className={`relative group mb-2 p-3 rounded-lg cursor-pointer transition-colors ${
+                className={`relative group mb-0.5 h-11 px-2 rounded-md cursor-pointer transition-colors ${
                   currentConversationId === conv.id
-                    ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-900 dark:text-purple-100'
+                    ? 'bg-[#EAF4FF] dark:bg-[#0A2747] text-[#007AFF] dark:text-[#7AB8FF]'
                     : 'hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'
                 }`}
                 onClick={() => onSelectConversation(conv.id)}
               >
-                <div className="flex items-start gap-2">
+                <div className="flex items-start gap-1.5 pr-8">
                   <MessageCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{conv.title}</p>
@@ -125,13 +137,14 @@ export function ConversationSidebar({
                   </div>
                 </div>
 
-                {(hoveredId === conv.id || currentConversationId === conv.id) && (
+                {/* Delete button - Hanya tampil untuk conversation yang aktif/dipilih */}
+                {currentConversationId === conv.id && (
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
                       onDeleteConversation(conv.id);
                     }}
-                    className="absolute right-2 top-2 p-1 rounded hover:bg-red-500/20 text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="absolute right-2 top-2 p-1 rounded hover:bg-red-500/20 text-red-500 transition-opacity"
                     aria-label="Delete conversation"
                     title="Delete conversation"
                   >

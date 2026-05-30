@@ -2,32 +2,24 @@
 
 import { Button } from '@/components/ui/button';
 import { AVAILABLE_MODELS } from '@/lib/models';
-import { ChevronDown, Menu, Settings } from 'lucide-react';
+import { ChevronDown, Settings } from 'lucide-react';
 import { useState } from 'react';
 
 interface TopBarProps {
   selectedModel: string;
   onModelChange: (modelId: string) => void;
-  onMenuClick?: () => void;
   onSettingsClick?: () => void;
+  isSidebarOpen?: boolean;
 }
 
-export function TopBar({ selectedModel, onModelChange, onMenuClick, onSettingsClick }: TopBarProps) {
+export function TopBar({ selectedModel, onModelChange, onSettingsClick, isSidebarOpen = true }: TopBarProps) {
   const [isOpen, setIsOpen] = useState(false);
 
   const currentModel = AVAILABLE_MODELS.find((m) => m.id === selectedModel);
 
   return (
-    <div className="bg-white dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800 px-4 py-3 flex items-center justify-between shadow-sm">
+    <div className={`bg-white dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800 py-3 flex items-center justify-between shadow-sm ${isSidebarOpen ? 'px-4' : 'pl-16 pr-4'}`}>
       <div className="flex items-center gap-3">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onMenuClick}
-          className="md:hidden"
-        >
-          <Menu className="w-5 h-5" />
-        </Button>
         <h1 className="text-lg font-semibold text-gray-900 dark:text-white">ChatBot</h1>
       </div>
 
