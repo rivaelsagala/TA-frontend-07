@@ -16,8 +16,6 @@ const nextConfig = {
   },
   experimental: {
     serverComponentsExternalPackages: ['pdfjs-dist', 'mammoth', 'xlsx'],
-    // Add this if using Option 2
-    serverActions: true,
   }
 };
 

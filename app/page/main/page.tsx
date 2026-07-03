@@ -8,53 +8,151 @@ import { Button } from '@/components/ui/button';
 import { useBackendChat } from '@/hooks/useBackendChat';
 import { Conversation, Message, createMessage } from '@/lib/conversation';
 import { ChatSessionData, ChatHistoryData } from '@/types/chat';
+import { AVAILABLE_MODELS, DEFAULT_MODEL_ID, getModelNumericId } from '@/lib/models';
 import { PanelLeftClose } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
-// const FLASK_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL;
-const CURRENT_USER_ID = 1; 
+const CURRENT_USER_ID = 1;
+
+interface SendMessageOptions {
+  evaluateRagas?: boolean;
+}
+
+// Ground truth sementara untuk testing RAGAS.
+// Nanti bisa dibuat dinamis dari dataset atau backend.
+const DEFAULT_RAGAS_GROUND_TRUTH =
+  'Bidan mempunyai tugas: a. Melakukan asuhan kebidanan sesuai standar pelayanan dan kewenangannya. b. Melakukan pemeriksaan pada kehamilan. c. Melakukan pertolongan persalinan. d. Melakukan asuhan kebidanan paska persalinan pada ibu nifas dan bayi baru lahir. e. Melakukan perawatan pada bayi baru lahir.';
+
+const getNumberOrNull = (value: unknown): number | null => {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+};
+
+const calculateAverageScore = (values: Array<number | null>): number | null => {
+  const validValues = values.filter(
+    (value): value is number =>
+      typeof value === 'number' && Number.isFinite(value)
+  );
+
+  if (validValues.length === 0) return null;
+
+  const total = validValues.reduce((sum, value) => sum + value, 0);
+  return total / validValues.length;
+};
+
+const toRecord = (value: unknown): Record<string, unknown> | null => {
+  if (!value || typeof value !== 'object') return null;
+  return value as Record<string, unknown>;
+};
+
+const normalizeRagasEvaluation = (raw: unknown) => {
+  const data = toRecord(raw);
+
+  if (!data) return null;
+
+  const faithfulness = getNumberOrNull(data.faithfulness);
+
+  const answerRelevance = getNumberOrNull(
+    data.answer_relevance ??
+      data.answer_relevancy ??
+      data.answerRelevance ??
+      data.answerRelevancy
+  );
+
+  const contextPrecision = getNumberOrNull(
+    data.context_precision ?? data.contextPrecision
+  );
+
+  const contextRecall = getNumberOrNull(
+    data.context_recall ?? data.contextRecall
+  );
+
+  const noiseSensitivity = getNumberOrNull(
+    data.noise_sensitivity ?? data.noiseSensitivity
+  );
+
+  const averageScore =
+    getNumberOrNull(data.average_score ?? data.averageScore) ??
+    calculateAverageScore([
+      faithfulness,
+      answerRelevance,
+      contextPrecision,
+      contextRecall,
+      noiseSensitivity,
+    ]);
+
+  const hasAnyMetric = [
+    faithfulness,
+    answerRelevance,
+    contextPrecision,
+    contextRecall,
+    noiseSensitivity,
+    averageScore,
+  ].some((value) => value !== null);
+
+  if (!hasAnyMetric) return null;
+
+  return {
+    faithfulness,
+
+    answer_relevance: answerRelevance,
+    answer_relevancy: answerRelevance,
+    answerRelevance,
+    answerRelevancy: answerRelevance,
+
+    context_precision: contextPrecision,
+    contextPrecision,
+
+    context_recall: contextRecall,
+    contextRecall,
+
+    noise_sensitivity: noiseSensitivity,
+    noiseSensitivity,
+
+    average_score: averageScore,
+    averageScore,
+  };
+};
+
+const getSavedModelForSession = (sessionId: string) => {
+  if (typeof window === 'undefined') return DEFAULT_MODEL_ID;
+  return localStorage.getItem(`conversation-model-${sessionId}`) || DEFAULT_MODEL_ID;
+};
+
+const saveModelForSession = (sessionId: string, modelId: string) => {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(`conversation-model-${sessionId}`, modelId);
+};
 
 export default function Home() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Default false, akan di-set di useEffect
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [sidebarWidth, setSidebarWidth] = useState(256); 
-  
-  // State untuk melacak sesi mana yang sedang loading history-nya
+  const [sidebarWidth, setSidebarWidth] = useState(256);
+
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
-  
-  // Flag untuk menandai bahwa pesan saat ini adalah dari history load (bukan pesan baru)
   const [isDisplayingHistory, setIsDisplayingHistory] = useState(false);
-  
-  // Cache untuk histori yang sudah di-load (untuk performa)
   const [historyCache, setHistoryCache] = useState<Record<string, Message[]>>({});
 
   const { sendMessage, isLoading, error } = useBackendChat();
 
-  // Set sidebar open/close based on screen size on mount
   useEffect(() => {
     const handleResize = () => {
-      // md breakpoint in Tailwind is 768px
       setIsSidebarOpen(window.innerWidth >= 768);
     };
-    
-    // Set initial value
+
     handleResize();
-    
-    // Add listener for window resize
+
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // 1. Load Sessions (Sidebar) on Mount + Restore selected session dari localStorage
   useEffect(() => {
     const savedSessionId = localStorage.getItem('currentConversationId');
     loadSessions(savedSessionId || undefined);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 2. Persist currentConversationId ke localStorage setiap kali berubah
   useEffect(() => {
     if (currentConversationId) {
       localStorage.setItem('currentConversationId', currentConversationId);
@@ -65,20 +163,20 @@ export default function Home() {
     try {
       const res = await fetch(`/api/chat-sessions?user_id=${CURRENT_USER_ID}`);
       const json = await res.json();
+
       if (json.status === 'success') {
         const mappedConvs: Conversation[] = json.data.map((s: ChatSessionData) => ({
           id: s.id.toString(),
           title: s.session_name || 'New Chat',
           createdAt: new Date(s.created_at),
           updatedAt: new Date(s.updated_at),
-          messages: [], // Message akan di-load saat sesi diklik
-          model: 'llama-3'
+          messages: [],
+          model: getSavedModelForSession(s.id.toString()),
         }));
-        
+
         setConversations(mappedConvs);
 
-        // Priority: autoSelectId > savedSessionId > first session
-        if (autoSelectId && mappedConvs.some(c => c.id === autoSelectId)) {
+        if (autoSelectId && mappedConvs.some((c) => c.id === autoSelectId)) {
           setCurrentConversationId(autoSelectId);
         } else if (!currentConversationId && mappedConvs.length > 0) {
           setCurrentConversationId(mappedConvs[0].id);
@@ -89,54 +187,69 @@ export default function Home() {
     }
   };
 
-  // 3. Load History saat Sesi dipilih - dengan caching
   useEffect(() => {
     if (currentConversationId) {
-      // Cek apakah histori sudah ada di cache
       if (historyCache[currentConversationId]) {
-        // Langsung pakai dari cache (instant!)
-        setIsDisplayingHistory(true); // Tandai sebagai history load
-        setConversations((prev) => 
-          prev.map((c) => c.id === currentConversationId 
-            ? { ...c, messages: historyCache[currentConversationId] } 
-            : c)
+        setIsDisplayingHistory(true);
+
+        setConversations((prev) =>
+          prev.map((c) =>
+            c.id === currentConversationId
+              ? { ...c, messages: historyCache[currentConversationId] }
+              : c
+          )
         );
       } else {
-        // Load dari server jika belum ada di cache
         loadHistory(currentConversationId);
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentConversationId]);
 
   const loadHistory = async (sessionId: string) => {
     setIsLoadingHistory(true);
-    setIsDisplayingHistory(true); // Tandai sebagai history load
+    setIsDisplayingHistory(true);
+
     try {
       const res = await fetch(`/api/chat-history/${sessionId}`);
       const json = await res.json();
-      
-      if (json.status === 'success') {
-        // OPTIMASI: Gunakan map + flat untuk performa lebih baik daripada forEach + push
-        const historyMessages = json.data.flatMap((msg: ChatHistoryData) => {
+
+      const historyData: ChatHistoryData[] = Array.isArray(json)
+        ? json
+        : Array.isArray(json.data)
+          ? json.data
+          : [];
+
+      if (historyData.length > 0) {
+        const historyMessages = historyData.flatMap((msg: ChatHistoryData) => {
           const userMsg = createMessage('user', msg.user_query);
-          const aiMessage = createMessage('assistant', msg.llm_response);
-          
-          // Tambahkan RAG metadata jika ada
-          if (msg.metadata?.sources) {
-            aiMessage.sources = msg.metadata.sources;
-          }
-          
+
+          const metadata = toRecord(msg.metadata);
+
+          const ragasEvaluation =
+            normalizeRagasEvaluation(metadata?.evaluation) ??
+            normalizeRagasEvaluation(metadata?.ragasEvaluation) ??
+            normalizeRagasEvaluation(msg);
+
+          const aiMessage = createMessage('assistant', msg.llm_response, {
+            sources: metadata?.sources,
+            ragasEvaluation,
+          });
+
           return [userMsg, aiMessage];
         });
 
-        // Update state sekali saja (batch update)
-        setConversations((prev) => 
-          prev.map((c) => c.id === sessionId ? { ...c, messages: historyMessages } : c)
+        setConversations((prev) =>
+          prev.map((c) =>
+            c.id === sessionId ? { ...c, messages: historyMessages } : c
+          )
         );
-        
-        // Simpan ke cache untuk load cepat berikutnya
-        setHistoryCache((prev) => ({ ...prev, [sessionId]: historyMessages }));
+
+        setHistoryCache((prev) => ({
+          ...prev,
+          [sessionId]: historyMessages,
+        }));
       }
     } catch (e) {
       console.error('Failed to load history:', e);
@@ -145,29 +258,43 @@ export default function Home() {
     }
   };
 
-  const handleNewChat = async () => {
-    // Panggil API untuk membuat sesi baru di Database
+  const handleNewChat = async (modelId: string = DEFAULT_MODEL_ID) => {
     try {
-      // const res = await fetch(`${FLASK_BASE_URL}/api/chat-sessions`, {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({
-      //     user_id: CURRENT_USER_ID,
-      //     session_name: 'New Chat'
-      //   })
       const res = await fetch(`/api/chat-sessions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           user_id: CURRENT_USER_ID,
-          session_name: 'New Chat'
-        })
+          session_name: `New Chat - ${
+            AVAILABLE_MODELS.find((m) => m.id === modelId)?.name || 'Chat'
+          }`,
+        }),
       });
+
       const json = await res.json();
+
+      if (!res.ok) {
+        console.error('Failed to create session', res.status, json);
+        return;
+      }
+
       if (json.status === 'success') {
-        // Refresh sidebar dan pilih chat yang baru dibuat
-        await loadSessions(json.data.id.toString());
-        // Close sidebar di mobile setelah membuat chat baru
+        const newSessionId = json.data.id.toString();
+
+        saveModelForSession(newSessionId, modelId);
+
+        const newConversation: Conversation = {
+          id: newSessionId,
+          title: json.data.session_name || 'New Chat',
+          createdAt: new Date(json.data.created_at || Date.now()),
+          updatedAt: new Date(json.data.updated_at || Date.now()),
+          messages: [],
+          model: modelId,
+        };
+
+        setConversations((prev) => [newConversation, ...prev]);
+        setCurrentConversationId(newSessionId);
+
         if (window.innerWidth < 768) {
           setIsSidebarOpen(false);
         }
@@ -181,7 +308,7 @@ export default function Home() {
     if (currentConversationId !== id) {
       setCurrentConversationId(id);
     }
-    // Close sidebar di mobile setelah memilih conversation
+
     if (window.innerWidth < 768) {
       setIsSidebarOpen(false);
     }
@@ -189,14 +316,18 @@ export default function Home() {
 
   const handleDeleteConversation = async (id: string) => {
     try {
-      const response = await fetch(`/api/chat-sessions/${id}`, { method: 'DELETE' });
-      
+      const response = await fetch(`/api/chat-sessions/${id}`, {
+        method: 'DELETE',
+      });
+
       if (!response.ok) {
         throw new Error(`Failed to delete session: ${response.statusText}`);
       }
 
       const remaining = conversations.filter((c) => c.id !== id);
+
       setConversations(remaining);
+
       if (currentConversationId === id) {
         setCurrentConversationId(remaining.length > 0 ? remaining[0].id : null);
       }
@@ -205,92 +336,171 @@ export default function Home() {
     }
   };
 
+  const handleModelChange = (modelId: string) => {
+    if (!currentConversationId) return;
+
+    setConversations((prev) =>
+      prev.map((c) =>
+        c.id === currentConversationId ? { ...c, model: modelId } : c
+      )
+    );
+
+    saveModelForSession(currentConversationId, modelId);
+  };
+
   const handleMenuClick = () => {
     setIsSidebarOpen((prev) => !prev);
   };
 
-  const handleSendMessage = async (messageText: string) => {
-    let activeId = currentConversationId;
+  const handleSendMessage = async (
+    messageText: string,
+    options?: SendMessageOptions
+  ) => {
+    let activeId: string | null = currentConversationId;
+    const evaluateRagas = options?.evaluateRagas ?? false;
 
-    // Jika belum ada chat yang aktif, paksa buat sesi baru dulu
     if (!activeId) {
       const res = await fetch(`/api/chat-sessions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: CURRENT_USER_ID, session_name: messageText.substring(0, 30) })
+        body: JSON.stringify({
+          user_id: CURRENT_USER_ID,
+          session_name: messageText.substring(0, 30),
+        }),
       });
+
       const json = await res.json();
-      if (json.status === 'success') {
-        activeId = json.data.id.toString();
-        await loadSessions(activeId ?? undefined); // Reload sidebar
-      } else {
-        return; // Berhenti jika gagal buat sesi
+
+      if (json.status !== 'success') {
+        return;
       }
+
+      const newSessionId = json.data.id.toString();
+      const modelId = DEFAULT_MODEL_ID;
+
+      activeId = newSessionId;
+
+      saveModelForSession(newSessionId, modelId);
+
+      const newConversation: Conversation = {
+        id: newSessionId,
+        title: json.data.session_name || messageText.substring(0, 30),
+        createdAt: new Date(json.data.created_at || Date.now()),
+        updatedAt: new Date(json.data.updated_at || Date.now()),
+        messages: [],
+        model: modelId,
+      };
+
+      setConversations((prev) => [newConversation, ...prev]);
+      setCurrentConversationId(newSessionId);
     }
 
-    // Cek apakah ini pesan pertama di percakapan ini (untuk update session_name nanti)
-    const currentConv = conversations.find((c) => c.id === activeId);
+    const sessionId = activeId;
+
+    if (!sessionId) {
+      return;
+    }
+
+    const currentConv = conversations.find((c) => c.id === sessionId);
+    const sessionModel = currentConv?.model || getSavedModelForSession(sessionId);
     const isFirstMessage = currentConv ? currentConv.messages.length === 0 : true;
 
-    // PERBAIKAN: Set isDisplayingHistory ke false karena ini pesan baru (bukan history)
     setIsDisplayingHistory(false);
 
-    // 1. Optimistic Update (Tampilkan pesan user di layar)
     const userMessage = createMessage('user', messageText);
-    setConversations((prev) => prev.map((c) =>
-      c.id === activeId ? { ...c, messages: [...c.messages, userMessage] } : c
-    ));
-    
-    // PERBAIKAN: Invalidate cache untuk session ini karena ada pesan baru
+
+    setConversations((prev) =>
+      prev.map((c) =>
+        c.id === sessionId
+          ? {
+              ...c,
+              messages: [...c.messages, userMessage],
+              updatedAt: new Date(),
+            }
+          : c
+      )
+    );
+
     setHistoryCache((prev) => {
       const newCache = { ...prev };
-      delete newCache[activeId!];
+      delete newCache[sessionId];
       return newCache;
     });
 
-    // 2. Kirim pesan ke Backend AI
-    const response = await sendMessage(messageText, Number(activeId), CURRENT_USER_ID);
-    
-    // 3. Tampilkan balasan AI
+    const response = await sendMessage(
+      messageText,
+      Number(sessionId),
+      CURRENT_USER_ID,
+      getModelNumericId(sessionModel || DEFAULT_MODEL_ID),
+      {
+        evaluate: evaluateRagas,
+        ground_truth: evaluateRagas ? DEFAULT_RAGAS_GROUND_TRUTH : undefined,
+      }
+    );
+
     if (response && response.status === 'success') {
-      const assistantMessage = createMessage('assistant', response.answer);
-      assistantMessage.sources = response.sources; // RAG Metadata
-      
-      setConversations((prev) => prev.map((c) =>
-        c.id === activeId ? { ...c, messages: [...c.messages, assistantMessage] } : c
-      ));
+      const ragasEvaluation = evaluateRagas
+        ? normalizeRagasEvaluation(response.evaluation) ??
+          normalizeRagasEvaluation(response)
+        : null;
+
+      const assistantMessage = createMessage('assistant', response.answer, {
+        sources: response.sources,
+        ragasEvaluation,
+      });
+
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === sessionId
+            ? {
+                ...c,
+                messages: [...c.messages, assistantMessage],
+                updatedAt: new Date(),
+              }
+            : c
+        )
+      );
     } else if (error) {
       const errorMessage = createMessage('assistant', `Error: ${error}`);
-      setConversations((prev) => prev.map((c) =>
-        c.id === activeId ? { ...c, messages: [...c.messages, errorMessage] } : c
-      ));
+
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === sessionId
+            ? {
+                ...c,
+                messages: [...c.messages, errorMessage],
+                updatedAt: new Date(),
+              }
+            : c
+        )
+      );
     }
 
-    // 4. Update session_name jika ini pesan pertama
-    if (isFirstMessage && activeId) {
+    if (isFirstMessage) {
       const sessionName = messageText.substring(0, 30);
+
       try {
-        await fetch(`/api/chat-sessions/${activeId}`, {
+        await fetch(`/api/chat-sessions/${sessionId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ session_name: sessionName })
+          body: JSON.stringify({ session_name: sessionName }),
         });
-        // Update title di sidebar secara lokal
-        setConversations((prev) => prev.map((c) =>
-          c.id === activeId ? { ...c, title: sessionName } : c
-        ));
+
+        setConversations((prev) =>
+          prev.map((c) =>
+            c.id === sessionId ? { ...c, title: sessionName } : c
+          )
+        );
       } catch (e) {
         console.error('Failed to update session name:', e);
       }
     }
   };
 
-
   const currentConversation = conversations.find((c) => c.id === currentConversationId);
 
   return (
     <div className="flex h-screen bg-white dark:bg-gray-950">
-      {/* Sidebar - Desktop */}
       {isSidebarOpen && (
         <div className="hidden md:flex flex-col border-r border-gray-200 dark:border-gray-800">
           <ConversationSidebar
@@ -306,15 +516,13 @@ export default function Home() {
         </div>
       )}
 
-      {/* Sidebar - Mobile (Overlay) */}
       {isSidebarOpen && (
         <>
-          {/* Backdrop */}
-          <div 
+          <div
             className="md:hidden fixed inset-0 bg-black/50 z-40"
             onClick={handleMenuClick}
           />
-          {/* Sidebar Drawer */}
+
           <div className="md:hidden fixed left-0 top-0 bottom-0 w-64 bg-white dark:bg-gray-950 z-50 shadow-xl">
             <ConversationSidebar
               conversations={conversations}
@@ -330,9 +538,7 @@ export default function Home() {
         </>
       )}
 
-      {/* Main Chat Area */}
       <div className="flex-1 flex flex-col relative">
-        {/* Toggle Sidebar Button - Muncul ketika sidebar ditutup di desktop, atau selalu di mobile */}
         {!isSidebarOpen && (
           <div className="absolute top-3.5 left-4 z-10">
             <Button
@@ -347,18 +553,17 @@ export default function Home() {
             </Button>
           </div>
         )}
-        
+
         <TopBar
-          selectedModel={currentConversation?.model || 'llama-3'}
-          onModelChange={() => {}}
+          selectedModel={currentConversation?.model || DEFAULT_MODEL_ID}
+          onModelChange={handleModelChange}
           onSettingsClick={() => setIsSettingsOpen(true)}
           isSidebarOpen={isSidebarOpen}
         />
 
-        {/* Loading Spinner Untuk Transisi Antar Sesi */}
         {isLoadingHistory ? (
           <div className="flex-1 flex items-center justify-center">
-            <div className="w-8 h-8 border-4 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+            <div className="w-8 h-8 border-4 border-purple-500 border-t-transparent rounded-full animate-spin" />
           </div>
         ) : currentConversation ? (
           <ChatWindow
@@ -372,9 +577,12 @@ export default function Home() {
         ) : (
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center">
-              <p className="text-gray-500 dark:text-gray-400 mb-4">No conversation selected</p>
+              <p className="text-gray-500 dark:text-gray-400 mb-4">
+                No conversation selected
+              </p>
+
               <button
-                onClick={handleNewChat}
+                onClick={() => handleNewChat()}
                 className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium"
               >
                 Start a new chat
@@ -384,227 +592,10 @@ export default function Home() {
         )}
       </div>
 
-      {/* Settings Modal */}
-      <AccountSettingsModal 
-        isOpen={isSettingsOpen} 
+      <AccountSettingsModal
+        isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
       />
     </div>
   );
 }
-
-// 'use client';
-
-// import { AccountSettingsModal } from '@/components/chat/account-settings-modal';
-// import { ChatWindow } from '@/components/chat/chat-window';
-// import { ConversationSidebar } from '@/components/chat/conversation-sidebar';
-// import { TopBar } from '@/components/chat/top-bar';
-// import { useBackendChat } from '@/hooks/useBackendChat';
-// import { Conversation, createConversation, createMessage, generateConversationTitle } from '@/lib/conversation';
-// import { useEffect, useState } from 'react';
-
-// export default function Home() {
-//   const [conversations, setConversations] = useState<Conversation[]>([]);
-//   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
-//   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-//   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-//   const [sidebarWidth, setSidebarWidth] = useState(256); // 256px = w-64
-//   const [sessionId, setSessionId] = useState<string | null>(null);
-
-//   const { sendMessage, isLoading, error, clearError } = useBackendChat();
-
-//   // Load conversations from localStorage on mount
-//   useEffect(() => {
-//     const saved = localStorage.getItem('conversations');
-//     const savedSessionId = localStorage.getItem('sessionId');
-    
-//     if (saved) {
-//       try {
-//         const parsed = JSON.parse(saved);
-//         setConversations(parsed);
-//         if (parsed.length > 0) {
-//           setCurrentConversationId(parsed[0].id);
-//         }
-//       } catch (e) {
-//         console.error('Failed to load conversations:', e);
-//       }
-//     }
-
-//     // Load or generate session ID
-//     if (savedSessionId) {
-//       setSessionId(savedSessionId);
-//     } else {
-//       const newSessionId = `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-//       setSessionId(newSessionId);
-//       localStorage.setItem('sessionId', newSessionId);
-//     }
-//   }, []);
-
-//   // Save conversations to localStorage whenever they change
-//   useEffect(() => {
-//     localStorage.setItem('conversations', JSON.stringify(conversations));
-//   }, [conversations]);
-
-//   // Clear error when conversation changes
-//   useEffect(() => {
-//     if (error) {
-//       clearError();
-//     }
-//   }, [currentConversationId, error, clearError]);
-
-//   const currentConversation = conversations.find((c) => c.id === currentConversationId);
-
-//   const handleNewChat = () => {
-//     const newConv = createConversation('llama-3');
-//     setConversations((prev) => [newConv, ...prev]);
-//     setCurrentConversationId(newConv.id);
-//   };
-
-//   const handleSelectConversation = (id: string) => {
-//     setCurrentConversationId(id);
-//   };
-
-//   const handleDeleteConversation = (id: string) => {
-//     setConversations((prev) => prev.filter((c) => c.id !== id));
-//     if (currentConversationId === id) {
-//       const remaining = conversations.filter((c) => c.id !== id);
-//       setCurrentConversationId(remaining.length > 0 ? remaining[0].id : null);
-//     }
-//   };
-
-//   const handleModelChange = (modelId: string) => {
-//     if (currentConversation) {
-//       setConversations((prev) =>
-//         prev.map((c) =>
-//           c.id === currentConversationId
-//             ? { ...c, model: modelId, updatedAt: new Date() }
-//             : c
-//         )
-//       );
-//     }
-//   };
-
-//   const handleSendMessage = async (messageText: string) => {
-//     if (!currentConversation) return;
-
-//     // Add user message
-//     const userMessage = createMessage('user', messageText);
-//     setConversations((prev) =>
-//       prev.map((c) =>
-//         c.id === currentConversationId
-//           ? {
-//               ...c,
-//               messages: [...c.messages, userMessage],
-//               updatedAt: new Date(),
-//             }
-//           : c
-//       )
-//     );
-
-//     // Update title if it's the first message
-//     if (currentConversation.messages.length === 0) {
-//       setConversations((prev) =>
-//         prev.map((c) =>
-//           c.id === currentConversationId
-//             ? { ...c, title: generateConversationTitle(messageText) }
-//             : c
-//         )
-//       );
-//     }
-
-//     // Send message to backend
-//     const response = await sendMessage(messageText);
-    
-//     if (response && response.status === 'success') {
-//       // Add assistant response with sources
-//       const assistantMessage = createMessage('assistant', response.answer);
-//       // Store sources in the message metadata if needed
-//       (assistantMessage as any).sources = response.sources;
-      
-//       setConversations((prev) =>
-//         prev.map((c) =>
-//           c.id === currentConversationId
-//             ? {
-//                 ...c,
-//                 messages: [...c.messages, assistantMessage],
-//                 updatedAt: new Date(),
-//               }
-//             : c
-//         )
-//       );
-//     } else if (error) {
-//       // Add error message
-//       const errorMessage = createMessage('assistant', `Sorry, I encountered an error: ${error}`);
-//       setConversations((prev) =>
-//         prev.map((c) =>
-//           c.id === currentConversationId
-//             ? {
-//                 ...c,
-//                 messages: [...c.messages, errorMessage],
-//                 updatedAt: new Date(),
-//               }
-//             : c
-//         )
-//       );
-//     }
-//   };
-
-//   return (
-//     <div className="flex h-screen bg-white dark:bg-gray-950">
-//       {/* Sidebar */}
-//       {isSidebarOpen && (
-//         <div className="hidden md:flex flex-col border-r border-gray-200 dark:border-gray-800">
-//           <ConversationSidebar
-//             conversations={conversations}
-//             currentConversationId={currentConversationId}
-//             onNewChat={handleNewChat}
-//             onSelectConversation={handleSelectConversation}
-//             onDeleteConversation={handleDeleteConversation}
-//             width={sidebarWidth}
-//             onWidthChange={setSidebarWidth}
-//           />
-//         </div>
-//       )}
-
-//       {/* Main Chat Area */}
-//       <div className="flex-1 flex flex-col">
-//         {/* Top Bar */}
-//         <TopBar
-//           selectedModel={currentConversation?.model || 'llama-3'}
-//           onModelChange={handleModelChange}
-//           onMenuClick={() => setIsSidebarOpen(!isSidebarOpen)}
-//           onSettingsClick={() => setIsSettingsOpen(true)}
-//         />
-
-//         {/* Chat Window */}
-//         {currentConversation ? (
-//           <ChatWindow
-//             messages={currentConversation.messages}
-//             isLoading={isLoading}
-//             onSendMessage={handleSendMessage}
-//             isEmpty={currentConversation.messages.length === 0}
-//             error={error}
-//           />
-//         ) : (
-//           <div className="flex-1 flex items-center justify-center">
-//             <div className="text-center">
-//               <p className="text-gray-500 dark:text-gray-400 mb-4">No conversation selected</p>
-//               <button
-//                 onClick={handleNewChat}
-//                 className="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg font-medium"
-//               >
-//                 Start a new chat
-//               </button>
-//             </div>
-//           </div>
-//         )}
-//       </div>
-
-//       {/* Settings Modal */}
-//       <AccountSettingsModal 
-//         isOpen={isSettingsOpen} 
-//         onClose={() => setIsSettingsOpen(false)}
-//       />
-//     </div>
-//   );
-// }

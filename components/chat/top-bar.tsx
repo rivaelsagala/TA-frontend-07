@@ -3,7 +3,7 @@
 import { Button } from '@/components/ui/button';
 import { AVAILABLE_MODELS } from '@/lib/models';
 import { ChevronDown, Settings } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 interface TopBarProps {
   selectedModel: string;
@@ -14,8 +14,20 @@ interface TopBarProps {
 
 export function TopBar({ selectedModel, onModelChange, onSettingsClick, isSidebarOpen = true }: TopBarProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
 
   const currentModel = AVAILABLE_MODELS.find((m) => m.id === selectedModel);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   return (
     <div className={`bg-white dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800 py-3 flex items-center justify-between shadow-sm ${isSidebarOpen ? 'px-4' : 'pl-16 pr-4'}`}>
@@ -25,7 +37,7 @@ export function TopBar({ selectedModel, onModelChange, onSettingsClick, isSideba
 
       <div className="flex items-center gap-3">
         {/* Model Selector */}
-        <div className="relative">
+        <div ref={dropdownRef} className="relative">
           <button
             onClick={() => setIsOpen(!isOpen)}
             className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-900 dark:text-white transition-colors"

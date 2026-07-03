@@ -1,112 +1,132 @@
-export interface Message {
-  id: string;
-  role: 'user' | 'assistant';
+export interface RagasEvaluation {
+  faithfulness?: number | null;
+
+  answer_relevance?: number | null;
+  answer_relevancy?: number | null;
+  answerRelevance?: number | null;
+  answerRelevancy?: number | null;
+
+  context_precision?: number | null;
+  contextPrecision?: number | null;
+
+  context_recall?: number | null;
+  contextRecall?: number | null;
+
+  noise_sensitivity?: number | null;
+  noiseSensitivity?: number | null;
+
+  average_score?: number | null;
+  averageScore?: number | null;
+
+  status?: string | null;
+}
+
+export interface SourceMetadata {
+  ayat?: string;
+  bab?: string;
+  bab_title?: string;
+  bagian?: string;
+  bagian_title?: string;
+  chunk_index?: number;
+  document_id?: string;
+  perdes_number?: string;
+  perdes_title?: string;
+  perdes_year?: string;
+  regency_name?: string;
+  section?: string;
+  source?: string;
+  source_file?: string;
+  title?: string;
+  total_pages?: number;
+  village_name?: string;
+}
+
+export interface ChatSource {
   content: string;
-  timestamp: Date;
-  isStreaming?: boolean;
-  ragContext?: RAGResult[]; // Add RAG context to messages
+  metadata?: SourceMetadata;
 }
 
-export interface Conversation {
-  id: string;
-  title: string;
-  createdAt: Date;
-  updatedAt: Date;
-  messages: Message[];
-  model: string;
-}
-
-export interface AIModel {
-  id: string;
-  name: string;
-  description?: string;
-  provider?: string;
-}
-
-// RAG Types
-export interface RAGMetadata {
-  chunk_index: number;
-  extraction_method: string;
-  ocr_page_count: number;
-  page_count: number;
-  preview: string;
-  source: string;
-  source_path: string;
+export interface ChatRequest {
+  session_id: number;
+  user_id: number;
+  message: string;
+  model_id: number;
+  evaluate?: boolean;
+  ground_truth?: string;
 }
 
 export interface RAGResult {
   content: string;
-  metadata: RAGMetadata;
+  metadata?: SourceMetadata;
+  score?: number | null;
+  [key: string]: unknown;
 }
 
 export interface RAGResponse {
   status: string;
-  count: number;
-  results: RAGResult[];
+  results?: RAGResult[];
+  error?: string;
+  message?: string;
+  [key: string]: unknown;
 }
 
-// Source metadata from backend
-export interface SourceMetadata {
-  author?: string;
-  creationDate?: string;
-  creationdate?: string;
-  creator?: string;
-  file_path: string;
-  format?: string;
-  keywords?: string;
-  modDate?: string;
-  moddate?: string;
-  page?: number;
-  producer?: string;
-  source: string;
-  source_file: string;
-  subject?: string;
-  title?: string;
-  total_pages?: number;
-  trapped?: string;
-}
-
-// Source document from RAG
-export interface Source {
-  content: string;
-  metadata: SourceMetadata;
-}
-
-// Backend Chat Response Interface
 export interface BackendChatResponse {
+  status: string;
+  message?: string;
   answer: string;
-  question: string;
-  status: 'success' | 'error';
-  sources: Source[];
+  question?: string;
+
+  model_used?: string;
+  similarity_score?: number | null;
+  sources?: ChatSource[];
+
+  evaluation?: RagasEvaluation | null;
+
+  // Fallback kalau backend mengirim metrik langsung di level utama
+  faithfulness?: number | null;
+  answer_relevance?: number | null;
+  answer_relevancy?: number | null;
+  context_precision?: number | null;
+  context_recall?: number | null;
+  noise_sensitivity?: number | null;
+  average_score?: number | null;
 }
 
-// Chat Request Interface
-export interface ChatRequest {
-  message: string;
-  session_id: number;
-  user_id: number;
-  use_finetuned_model: boolean;
-}
-
-// Tipe Data untuk Respons API Sesi Chat
 export interface ChatSessionData {
   id: number;
-  session_name: string;
+  user_id?: number;
+  session_name?: string;
   created_at: string;
   updated_at: string;
 }
 
-export interface ChatHistoryData {
-  id: number;
-  user_query: string;
-  llm_response: string;
-  metadata?: any;
-  created_at: string;
+export interface ChatHistoryMetadata {
+  sources?: ChatSource[];
+  evaluation?: RagasEvaluation | null;
+  ragasEvaluation?: RagasEvaluation | null;
+
+  [key: string]: unknown;
 }
 
-export const DEFAULT_MODELS: AIModel[] = [
-  { id: 'llama-3', name: 'Llama 3', provider: 'Meta' },
-  { id: 'gpt-4', name: 'GPT-4', provider: 'OpenAI' },
-  { id: 'rag-model', name: 'RAG Model', description: 'Retrieval Augmented Generation' },
-  { id: 'raft-model', name: 'RAFT Model', description: 'RAFT Model' },
-];
+export interface ChatHistoryData {
+  id?: number;
+  session_id?: number;
+
+  user_query: string;
+  llm_response: string;
+  metadata?: ChatHistoryMetadata;
+
+  similarity_score?: number | null;
+
+  // Metrik RAGAS dari backend history
+  faithfulness?: number | null;
+  answer_relevance?: number | null;
+  answer_relevancy?: number | null;
+  context_precision?: number | null;
+  context_recall?: number | null;
+  noise_sensitivity?: number | null;
+  average_score?: number | null;
+
+  created_at?: string;
+  updated_at?: string;
+}

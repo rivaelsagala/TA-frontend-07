@@ -2,8 +2,20 @@ import { useState } from 'react';
 import type { BackendChatResponse, ChatRequest } from '@/types/chat';
 import { formatBackendError } from '@/lib/backend-utils';
 
+interface SendMessageOptions {
+  evaluate?: boolean;
+  ground_truth?: string;
+  groundTruth?: string;
+}
+
 export interface ChatHookResult {
-  sendMessage: (message: string, sessionId: number, userId: number) => Promise<BackendChatResponse | null>;
+  sendMessage: (
+    message: string,
+    sessionId: number,
+    userId: number,
+    modelId: number,
+    options?: SendMessageOptions
+  ) => Promise<BackendChatResponse | null>;
   isLoading: boolean;
   error: string | null;
   clearError: () => void;
@@ -18,27 +30,35 @@ export const useBackendChat = (): ChatHookResult => {
   const sendMessage = async (
     message: string,
     sessionId: number,
-    userId: number
+    userId: number,
+    modelId: number,
+    options?: SendMessageOptions
   ): Promise<BackendChatResponse | null> => {
     if (!message.trim()) {
       setError('Message cannot be empty');
       return null;
     }
-    
+
     try {
       setIsLoading(true);
       setError(null);
-      
-      const requestBody: ChatRequest = {
+
+      const groundTruth = options?.ground_truth ?? options?.groundTruth;
+
+      const requestBody: ChatRequest & {
+        evaluate?: boolean;
+        ground_truth?: string;
+      } = {
         session_id: sessionId,
         user_id: userId,
         message: message.trim(),
-        use_finetuned_model: false,
+        model_id: modelId,
+        evaluate: options?.evaluate ?? false,
+        ground_truth: groundTruth,
       };
 
       console.log('Sending chat request to Next.js API:', requestBody);
 
-      // PERUBAHAN: Tembak ke Next.js API Route, BUKAN ke Flask langsung
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: {
@@ -48,14 +68,17 @@ export const useBackendChat = (): ChatHookResult => {
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ 
-          error: `HTTP ${response.status}: ${response.statusText}` 
+        const errorData = await response.json().catch(() => ({
+          error: `HTTP ${response.status}: ${response.statusText}`,
         }));
+
         throw new Error(errorData.error || 'Failed to send message');
       }
 
       const data: BackendChatResponse = await response.json();
-      
+
+      console.log('Received chat response:', data);
+
       if (data.status !== 'success') {
         throw new Error(data.answer || 'Chat request failed');
       }
@@ -64,6 +87,9 @@ export const useBackendChat = (): ChatHookResult => {
     } catch (err) {
       const rawError = err instanceof Error ? err.message : 'Failed to send message';
       const formattedError = formatBackendError(rawError);
+
+      console.error('Chat error:', err);
+
       setError(formattedError);
       return null;
     } finally {
@@ -71,11 +97,11 @@ export const useBackendChat = (): ChatHookResult => {
     }
   };
 
-  return { 
-    sendMessage, 
-    isLoading, 
-    error, 
-    clearError 
+  return {
+    sendMessage,
+    isLoading,
+    error,
+    clearError,
   };
 };
 

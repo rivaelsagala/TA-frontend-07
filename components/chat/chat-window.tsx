@@ -4,18 +4,21 @@ import { ChatInput } from '@/components/chat/chat-input';
 import { MarkdownMessage } from '@/components/chat/markdown-message';
 import { Message } from '@/lib/conversation';
 import { MessageCircle } from 'lucide-react';
-import { memo, useEffect, useRef } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
+
+interface SendMessageOptions {
+  evaluateRagas?: boolean;
+}
 
 interface ChatWindowProps {
   messages: Message[];
   isLoading: boolean;
-  onSendMessage: (message: string) => void;
+  onSendMessage: (message: string, options?: SendMessageOptions) => void;
   isEmpty?: boolean;
   error?: string | null;
-  isHistoryLoading?: boolean; // Flag untuk menandai loading histori
+  isHistoryLoading?: boolean;
 }
 
-// OPTIMASI: Gunakan React.memo untuk menghindari re-render berlebihan
 export const ChatWindow = memo(function ChatWindow({
   messages,
   isLoading,
@@ -27,8 +30,11 @@ export const ChatWindow = memo(function ChatWindow({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const prevMessagesLengthRef = useRef(messages.length);
 
+  // Toggle ini hanya untuk menentukan apakah pesan BARU dikirim dengan evaluasi RAGAS.
+  // Jangan gunakan state ini untuk menyembunyikan RAGAS pada history.
+  const [ragasEnabled, setRagasEnabled] = useState(false);
+
   useEffect(() => {
-    // Auto-scroll to bottom hanya untuk pesan baru, tidak untuk histori
     if (messages.length > prevMessagesLengthRef.current || isLoading) {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
@@ -36,9 +42,23 @@ export const ChatWindow = memo(function ChatWindow({
     prevMessagesLengthRef.current = messages.length;
   }, [messages, isLoading]);
 
+  const handleToggleRagas = useCallback(() => {
+    if (isLoading) return;
+
+    setRagasEnabled((prev) => !prev);
+  }, [isLoading]);
+
+  const handleSendMessage = useCallback(
+    (message: string) => {
+      onSendMessage(message, {
+        evaluateRagas: ragasEnabled,
+      });
+    },
+    [onSendMessage, ragasEnabled]
+  );
+
   return (
     <div className="flex flex-col h-full min-h-0 overflow-hidden bg-white dark:bg-gray-950">
-      {/* Messages Container */}
       <div className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-4 md:p-6 space-y-3 sm:space-y-4">
         {isEmpty ? (
           <div className="h-full flex flex-col items-center justify-center text-center px-4 sm:px-6">
@@ -60,6 +80,11 @@ export const ChatWindow = memo(function ChatWindow({
                 content={message.content}
                 isUser={message.role === 'user'}
                 skipTyping={isHistoryLoading || index < messages.length - 1}
+                ragasEvaluation={
+                  message.role === 'assistant'
+                    ? message.ragasEvaluation ?? null
+                    : null
+                }
               />
             ))}
 
@@ -82,8 +107,8 @@ export const ChatWindow = memo(function ChatWindow({
                 <div className="rounded-2xl rounded-tl-sm px-3 sm:px-4 py-2.5 sm:py-3 bg-gray-100 dark:bg-gray-800">
                   <div className="flex gap-2">
                     <div className="w-2 h-2 bg-gray-600 dark:bg-gray-400 rounded-full animate-bounce" />
-                    <div className="w-2 h-2 bg-gray-600 dark:bg-gray-400 rounded-full animate-bounce" />
-                    <div className="w-2 h-2 bg-gray-600 dark:bg-gray-400 rounded-full animate-bounce" />
+                    <div className="w-2 h-2 bg-gray-600 dark:bg-gray-400 rounded-full animate-bounce [animation-delay:0.15s]" />
+                    <div className="w-2 h-2 bg-gray-600 dark:bg-gray-400 rounded-full animate-bounce [animation-delay:0.3s]" />
                   </div>
                 </div>
               </div>
@@ -94,8 +119,12 @@ export const ChatWindow = memo(function ChatWindow({
         )}
       </div>
 
-      {/* Input Area */}
-      <ChatInput onSend={onSendMessage} isLoading={isLoading} />
+      <ChatInput
+        onSend={handleSendMessage}
+        isLoading={isLoading}
+        ragasEnabled={ragasEnabled}
+        onToggleRagas={handleToggleRagas}
+      />
     </div>
   );
 });
