@@ -1,32 +1,59 @@
 'use client';
 
 import { cn } from '@/lib/utils';
+import { BarChart3 } from 'lucide-react';
 import { memo, useEffect, useState } from 'react';
+
+interface RagasEvaluation {
+  faithfulness?: number | null;
+
+  answerRelevance?: number | null;
+  answer_relevance?: number | null;
+
+  answerRelevancy?: number | null;
+  answer_relevancy?: number | null;
+
+  contextPrecision?: number | null;
+  context_precision?: number | null;
+
+  contextRecall?: number | null;
+  context_recall?: number | null;
+
+  contextEntitiesRecall?: number | null;
+  context_entities_recall?: number | null;
+
+  noiseSensitivity?: number | null;
+  noise_sensitivity?: number | null;
+
+  averageScore?: number | null;
+  average_score?: number | null;
+
+  status?: string | null;
+}
 
 interface MarkdownMessageProps {
   content: string;
   isUser: boolean;
-  skipTyping?: boolean; // Flag untuk skip typing effect (histori)
+  skipTyping?: boolean;
+  ragasEvaluation?: RagasEvaluation | null;
 }
 
-// OPTIMASI: Gunakan React.memo untuk menghindari re-render jika props tidak berubah
 export const MarkdownMessage = memo(function MarkdownMessage({
   content,
   isUser,
   skipTyping = false,
+  ragasEvaluation = null,
 }: MarkdownMessageProps) {
   const [displayedText, setDisplayedText] = useState(skipTyping ? content : '');
   const [isTyping, setIsTyping] = useState(!isUser && !skipTyping);
 
   useEffect(() => {
-    // Skip typing effect untuk histori atau pesan user
     if (skipTyping || isUser) {
       setDisplayedText(content);
       setIsTyping(false);
       return;
     }
 
-    // Typing effect untuk pesan AI baru
     if (!isUser && content.length > 0) {
       setDisplayedText('');
       setIsTyping(true);
@@ -47,14 +74,68 @@ export const MarkdownMessage = memo(function MarkdownMessage({
     }
   }, [content, isUser, skipTyping]);
 
-  // Simple markdown rendering
+  const getMetricValue = (...values: Array<number | null | undefined>) => {
+    const validValue = values.find(
+      (value) => typeof value === 'number' && Number.isFinite(value)
+    );
+
+    return validValue ?? null;
+  };
+
+  const formatScore = (value: number | null) => {
+    if (value === null) return '-';
+    return value.toFixed(3);
+  };
+
+  const getFaithfulness = () => {
+    if (!ragasEvaluation) return null;
+
+    return getMetricValue(ragasEvaluation.faithfulness);
+  };
+
+  const getAnswerRelevance = () => {
+    if (!ragasEvaluation) return null;
+
+    return getMetricValue(
+      ragasEvaluation.answerRelevance,
+      ragasEvaluation.answer_relevance,
+      ragasEvaluation.answerRelevancy,
+      ragasEvaluation.answer_relevancy
+    );
+  };
+
+  const getContextPrecision = () => {
+    if (!ragasEvaluation) return null;
+
+    return getMetricValue(
+      ragasEvaluation.contextPrecision,
+      ragasEvaluation.context_precision
+    );
+  };
+
+  const getContextRecall = () => {
+    if (!ragasEvaluation) return null;
+
+    return getMetricValue(
+      ragasEvaluation.contextRecall,
+      ragasEvaluation.context_recall
+    );
+  };
+
+  const getNoiseSensitivity = () => {
+    if (!ragasEvaluation) return null;
+
+    return getMetricValue(
+      ragasEvaluation.noiseSensitivity,
+      ragasEvaluation.noise_sensitivity
+    );
+  };
+
   const renderContent = (text: string) => {
-    // Split by code blocks
     const parts = text.split(/(```[\s\S]*?```)/g);
 
     return parts.map((part, idx) => {
       if (part.startsWith('```')) {
-        // Code block
         const codeContent = part.replace(/```/g, '').trim();
 
         return (
@@ -105,13 +186,82 @@ export const MarkdownMessage = memo(function MarkdownMessage({
     });
   };
 
+  const renderRagasEvaluation = () => {
+    if (isUser || !ragasEvaluation || isTyping) return null;
+
+    const faithfulness = getFaithfulness();
+    const answerRelevance = getAnswerRelevance();
+    const contextPrecision = getContextPrecision();
+    const contextRecall = getContextRecall();
+    const noiseSensitivity = getNoiseSensitivity();
+
+    return (
+      <div className="mt-4 border-t border-gray-200 dark:border-gray-700 pt-3">
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <BarChart3 className="w-4 h-4 text-[#007AFF]" />
+
+          <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+            Evaluasi RAGAS
+          </span>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 text-xs">
+          <div>
+            <p className="text-gray-500 dark:text-gray-400 mb-1">
+              Faithfulness
+            </p>
+            <p className="font-semibold text-gray-900 dark:text-gray-100">
+              {formatScore(faithfulness)}
+            </p>
+          </div>
+
+          <div>
+            <p className="text-gray-500 dark:text-gray-400 mb-1">
+              Answer Relevance
+            </p>
+            <p className="font-semibold text-gray-900 dark:text-gray-100">
+              {formatScore(answerRelevance)}
+            </p>
+          </div>
+
+          <div>
+            <p className="text-gray-500 dark:text-gray-400 mb-1">
+              Context Precision
+            </p>
+            <p className="font-semibold text-gray-900 dark:text-gray-100">
+              {formatScore(contextPrecision)}
+            </p>
+          </div>
+
+          <div>
+            <p className="text-gray-500 dark:text-gray-400 mb-1">
+              Context Recall
+            </p>
+            <p className="font-semibold text-gray-900 dark:text-gray-100">
+              {formatScore(contextRecall)}
+            </p>
+          </div>
+
+          <div>
+            <p className="text-gray-500 dark:text-gray-400 mb-1">
+              Noise Sensitivity
+            </p>
+            <p className="font-semibold text-gray-900 dark:text-gray-100">
+              {formatScore(noiseSensitivity)}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className={cn('flex mb-4 gap-3', isUser ? 'justify-end' : 'justify-start')}>
       <div
         className={cn(
           'rounded-2xl px-4 py-3 shadow-sm max-w-2xl',
           isUser
-            ? 'bg-none bg-[#007AFF] text-white rounded-tr-sm'
+            ? 'bg-[#007AFF] text-white rounded-tr-sm'
             : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-tl-sm'
         )}
       >
@@ -121,11 +271,12 @@ export const MarkdownMessage = memo(function MarkdownMessage({
           {isTyping && !isUser && (
             <span className="inline-block w-2 h-2 bg-current rounded-full ml-1 animate-pulse" />
           )}
+
+          {renderRagasEvaluation()}
         </div>
       </div>
     </div>
   );
 });
 
-// Tambahkan displayName untuk debugging yang lebih baik
 MarkdownMessage.displayName = 'MarkdownMessage';

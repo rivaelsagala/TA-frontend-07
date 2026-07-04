@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL;
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://127.0.0.1:5000';
 
 /**
  * GET: Fetch all chat sessions for a user
@@ -61,6 +61,13 @@ export async function POST(request: Request) {
       );
     }
 
+    if (!session_name || typeof session_name !== 'string') {
+      return NextResponse.json(
+        { error: 'session_name must be a non-empty string', status: 'error' },
+        { status: 400 }
+      );
+    }
+
     const backendResponse = await fetch(`${BACKEND_URL}/api/chat-sessions`, {
       method: 'POST',
       headers: {
@@ -69,14 +76,21 @@ export async function POST(request: Request) {
       },
       body: JSON.stringify({
         user_id,
-        session_name: session_name || 'New Chat',
+        session_name,
       }),
     });
 
     if (!backendResponse.ok) {
       const errorText = await backendResponse.text();
+      console.error('chat-sessions create failed', backendResponse.status, errorText);
+      let parsedError = errorText;
+      try {
+        parsedError = JSON.parse(errorText).error ?? errorText;
+      } catch {
+        // keep raw text when not JSON
+      }
       return NextResponse.json(
-        { error: `Failed to create session: ${errorText}`, status: 'error' },
+        { error: `Failed to create session: ${parsedError}`, status: 'error' },
         { status: backendResponse.status }
       );
     }
